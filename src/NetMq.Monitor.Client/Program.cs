@@ -21,10 +21,13 @@ namespace DealerSocketTest
             var poller = new NetMQPoller();
             RunPoller(poller, dealerSocket);
 
-            var monitorEndpoint = "inproc://monitor";
-            var monitor = new NetMQMonitor(dealerSocket, monitorEndpoint);
+            var monitorEndpoint = "inproc://#monitor";
+            var monitor = new NetMQMonitor(
+                dealerSocket,
+                monitorEndpoint,
+                SocketEvents.All);
             SetMonitorOptions(monitor);
-            _ = Task.Factory.StartNew(monitor.Start);
+            var monitorTask = Task.Factory.StartNew(monitor.Start);
 
             var tcpEndpoint = GetTcpEndpoint(configuration);
             NetMQMessage message = new NetMQMessage();
