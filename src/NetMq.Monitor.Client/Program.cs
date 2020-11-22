@@ -1,5 +1,7 @@
 ﻿using System;
+using System.IO;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using NetMQ;
 using NetMQ.Monitoring;
 using NetMQ.Sockets;
@@ -10,22 +12,21 @@ namespace DealerSocketTest
     {
         static void Main(string[] args)
         {
+            IConfigurationRoot configuration = GetConfiguration();
+
             var dealerSocket = new DealerSocket();
+            SetTcpKeepalive(dealerSocket, configuration);
+            SetTcpKeepaliveInterval(dealerSocket, configuration);
+
             var poller = new NetMQPoller();
-            var endpoint = "tcp://192.168.2.128:49152";
+            RunPoller(poller, dealerSocket);
 
-            dealerSocket.Options.TcpKeepalive = true;
-            dealerSocket.Options.TcpKeepaliveInterval = TimeSpan.FromMilliseconds(1000);
+            var monitorEndpoint = "inproc://monitor";
+            var monitor = new NetMQMonitor(dealerSocket, monitorEndpoint);
+            SetMonitorOptions(monitor);
+            _ = Task.Factory.StartNew(monitor.Start);
 
-            poller.Add(dealerSocket);
-            poller.RunAsync();
-
-            var monitor = new NetMQMonitor(dealerSocket, endpoint);
-            monitor.Connected += OnConnected;
-            monitor.Disconnected += OnDisconnected;
-            monitor.Timeout = TimeSpan.FromMilliseconds(100);
-            var monitorTask = Task.Factory.StartNew(monitor.Start);
-
+            var tcpEndpoint = GetTcpEndpoint(configuration);
             NetMQMessage message = new NetMQMessage();
             while (true)
             {
@@ -37,12 +38,16 @@ namespace DealerSocketTest
                 switch(selection)
                 {
                     case 1:
-                        dealerSocket.Connect(endpoint);
-                        Console.WriteLine($"Dealer socket connected to {endpoint}");
+                        dealerSocket.Connect(tcpEndpoint);
+                        Console.WriteLine(
+                            $"Dealer socket connected to {tcpEndpoint}");
+                        Console.WriteLine();
                         break;
                     case 2:
-                        dealerSocket.Disconnect(endpoint);
-                        Console.WriteLine($"Dealer socket disconnected from {endpoint}");
+                        dealerSocket.Disconnect(tcpEndpoint);
+                        Console.WriteLine(
+                            $"Dealer socket disconnected from {tcpEndpoint}");
+                        Console.WriteLine();
                         break;
                     case 3:
                         SendMessage(dealerSocket);
@@ -59,6 +64,55 @@ namespace DealerSocketTest
                         throw new ArgumentOutOfRangeException();
                 }
             };
+        }
+
+        private static IConfigurationRoot GetConfiguration()
+        {
+            return new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile(
+                    "appsettings.json",
+                    optional: true,
+                    reloadOnChange: true)
+                .Build();
+        }
+
+        private static void SetTcpKeepalive(
+            DealerSocket dealerSocket,
+            IConfigurationRoot configuration)
+        {
+            var tcpKeepalive = bool.Parse(configuration["TcpKeepalive"]);
+            dealerSocket.Options.TcpKeepalive = tcpKeepalive;
+        }
+
+        private static void SetTcpKeepaliveInterval(
+            DealerSocket dealerSocket,
+            IConfigurationRoot configuration)
+        {
+            var tcpKeepaliveInterval =
+                int.Parse(configuration["TcpKeepaliveIntervalInMs"]);
+            dealerSocket.Options.TcpKeepaliveInterval = TimeSpan
+                .FromMilliseconds(tcpKeepaliveInterval);
+        }
+
+        private static void RunPoller(NetMQPoller poller, DealerSocket dealerSocket)
+        {
+            poller.Add(dealerSocket);
+            poller.RunAsync();
+        }
+
+        private static string GetTcpEndpoint(IConfigurationRoot configuration)
+        {
+            var ipAddress = configuration["IpAddress"];
+            var port = configuration["Port"];
+            return $"tcp://{ipAddress}:{port}";
+        }
+
+        private static void SetMonitorOptions(NetMQMonitor monitor)
+        {
+            monitor.Connected += OnConnected;
+            monitor.Disconnected += OnDisconnected;
+            monitor.Timeout = TimeSpan.FromMilliseconds(100);
         }
 
         private static void PrintMenu()
@@ -93,12 +147,12 @@ namespace DealerSocketTest
 
         private static void OnConnected(object sender, NetMQMonitorSocketEventArgs e)
         {
-            Console.WriteLine("Connected");
+            Console.WriteLine("Monitor saw a Connect event");
         }
 
         private static void OnDisconnected(object sender, NetMQMonitorSocketEventArgs e)
         {
-            Console.WriteLine("Disconnected");
+            Console.WriteLine("Monitor saw a Disconnected event");
         }
     }
 }
