@@ -32,7 +32,7 @@ namespace DealerSocketTest
             {
                 PrintMenu();
                 Console.WriteLine("Enter your selection: ");
-                var selection = int.Parse(Console.ReadLine());
+                int.TryParse(Console.ReadLine(), out int selection);
                 Console.WriteLine();
 
                 switch(selection)
@@ -61,7 +61,7 @@ namespace DealerSocketTest
                             string.Format("Message: {0}", itr.Current.ConvertToString()));
                         break;
                     default:
-                        throw new ArgumentOutOfRangeException();
+                        return;
                 }
             };
         }
@@ -123,6 +123,7 @@ namespace DealerSocketTest
             Console.WriteLine("2: Disconnect");
             Console.WriteLine("3: Send a message");
             Console.WriteLine("4: Wait for a message");
+            Console.WriteLine("Any other option to quit");
             Console.WriteLine();
         }
 
